@@ -37,6 +37,9 @@
             0% { transform: scale(0.75); opacity: 0; }
             100% { transform: scale(1); opacity: 1; }
         }
+        /* 과녁 영역 폭: 설정 패널을 숨기면 그만큼 확대 */
+        .board-w { max-width: 440px; transition: max-width 0.25s ease; }
+        #left-col.expanded .board-w { max-width: max(440px, min(640px, calc(100vh - 380px))); }
         .modal-pop {
             animation: pop-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
@@ -64,9 +67,17 @@
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
             
             <!-- 왼쪽: 다트 과녁 캔버스 및 투척 버튼 (7칸 차지) -->
-            <div class="lg:col-span-7 flex flex-col items-center">
+            <div id="left-col" class="lg:col-span-7 flex flex-col items-center">
+                <!-- 설정 패널 숨기기/보이기 -->
+                <div class="w-full board-w flex justify-end mb-2">
+                    <button onclick="toggleSettingsPanel()" id="panel-toggle-btn"
+                        class="game-btn bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-xl text-sm">
+                        🙈 설정 숨기기
+                    </button>
+                </div>
+
                 <!-- 과녁 회전 속도 조절 바 -->
-                <div class="w-full max-w-[440px] flex items-center justify-between bg-slate-800/80 px-4 py-2 rounded-2xl border border-slate-700 mb-3">
+                <div class="w-full board-w flex items-center justify-between bg-slate-800/80 px-4 py-2 rounded-2xl border border-slate-700 mb-3">
                     <span class="text-sm sm:text-base text-cyan-300">🌀 과녁 회전 속도:</span>
                     <div class="flex gap-1.5">
                         <button onclick="setBoardSpeed(0)" id="spd-0" class="px-3 py-1 rounded-lg text-xs sm:text-sm bg-slate-700 text-slate-300">정지</button>
@@ -76,12 +87,12 @@
                 </div>
 
                 <!-- 다트 과녁 캔버스 래퍼 -->
-                <div class="relative w-full max-w-[440px] aspect-square flex items-center justify-center bg-slate-950/70 rounded-3xl border-2 border-slate-700/80 p-2 shadow-inner" id="board-wrapper">
+                <div class="relative w-full board-w aspect-square flex items-center justify-center bg-slate-950/70 rounded-3xl border-2 border-slate-700/80 shadow-inner overflow-hidden" id="board-wrapper">
                     <canvas id="dartCanvas" class="cursor-crosshair"></canvas>
                 </div>
 
                 <!-- 하단 다트 던지기 버튼 & 꽂힌 다트 뽑기 버튼 -->
-                <div class="w-full max-w-[440px] mt-4 flex gap-3">
+                <div class="w-full board-w mt-4 flex gap-3">
                     <button onclick="throwDart()" id="throw-btn"
                         class="game-btn flex-1 bg-gradient-to-r from-rose-500 via-orange-500 to-amber-400 hover:from-rose-400 hover:to-amber-300 text-slate-950 font-bold text-2xl py-3.5 rounded-2xl tracking-wider">
                         🎯 다트 던지기!
@@ -97,7 +108,7 @@
             </div>
 
             <!-- 오른쪽: 과녁 칸(상품 & 벌칙) 설정 패널 (5칸 차지) -->
-            <div class="lg:col-span-5 bg-slate-800/80 p-4 sm:p-5 rounded-3xl border-2 border-rose-500/40 flex flex-col h-full">
+            <div id="settings-panel" class="lg:col-span-5 bg-slate-800/80 p-4 sm:p-5 rounded-3xl border-2 border-rose-500/40 flex flex-col h-full">
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                     <h2 class="text-xl text-amber-300">📝 과녁 상품 & 벌칙 설정</h2>
                 </div>
@@ -184,6 +195,14 @@
         const ctx = canvas.getContext('2d');
         const wrapper = document.getElementById('board-wrapper');
 
+        // 캔버스의 실제 표시 크기를 단일 기준으로 사용 (그리기/클릭/판정 좌표 일치)
+        const BULLSEYE_RATIO = 0.16;
+        const BULLSEYE_BONUS = '+ 한 번 더 던지기!';
+        function getBoardMetrics() {
+            const r = canvas.getBoundingClientRect();
+            return { W: r.width, H: r.height, cx: r.width / 2, cy: r.height / 2, radius: Math.min(r.width, r.height) * 0.44 };
+        }
+
         // ==========================================
         // 2. 사운드 효과 (Tone.js)
         // ==========================================
@@ -241,24 +260,22 @@
                 const percent = Math.round((item.weight / totalW) * 100);
                 const row = document.createElement('div');
                 row.className = 'flex items-center gap-1.5 bg-slate-900/90 p-2 rounded-xl border border-slate-700';
+                // 숫자/색상만 템플릿에 넣고, 사용자 텍스트는 DOM 속성으로 안전하게 주입
                 row.innerHTML = `
                     <span class="w-4 h-4 rounded-full shrink-0 border border-white/50" style="background-color: ${color};"></span>
-                    <input type="text" value="${item.text}" maxlength="13"
-                        onchange="updateItemText(${idx}, this.value)"
-                        class="w-full min-w-0 bg-transparent text-white text-sm sm:text-base px-1 focus:outline-none focus:border-b border-rose-400">
-                    
-                    <!-- 칸 크기(배율) 조절 컨트롤 -->
+                    <input type="text" maxlength="13"
+                        class="item-text w-full min-w-0 bg-transparent text-white text-sm sm:text-base px-1 focus:outline-none focus:border-b border-rose-400">
                     <div class="flex items-center bg-slate-800 rounded-lg border border-slate-600 px-1 py-0.5 shrink-0" title="칸 크기 조절">
                         <button type="button" onclick="changeItemWeight(${idx}, -1)" class="text-rose-400 hover:bg-slate-700 active:scale-90 rounded px-2 py-1 font-bold text-sm cursor-pointer">➖</button>
                         <span class="text-xs text-amber-300 font-bold w-11 text-center">${item.weight}배<span class="text-[10px] text-slate-400 block leading-none">${percent}%</span></span>
                         <button type="button" onclick="changeItemWeight(${idx}, 1)" class="text-emerald-400 hover:bg-slate-700 active:scale-90 rounded px-2 py-1 font-bold text-sm cursor-pointer">➕</button>
                     </div>
-
                     <button type="button" onclick="removeItem(${idx})" title="삭제"
-                        class="text-slate-400 hover:text-rose-400 px-2 py-1 text-sm font-bold shrink-0 cursor-pointer">
-                        ✕
-                    </button>
+                        class="text-slate-400 hover:text-rose-400 px-2 py-1 text-sm font-bold shrink-0 cursor-pointer">✕</button>
                 `;
+                const input = row.querySelector('.item-text');
+                input.value = item.text;
+                input.addEventListener('change', () => updateItemText(idx, input.value));
                 container.appendChild(row);
             });
         }
@@ -314,6 +331,19 @@
             document.getElementById('spd-2').className = spd === 0.038 ? 'px-3 py-1 rounded-lg text-xs sm:text-sm bg-rose-500 text-white font-bold' : 'px-3 py-1 rounded-lg text-xs sm:text-sm bg-slate-700 text-slate-300';
         }
 
+        function toggleSettingsPanel() {
+            playSound('click');
+            const panel = document.getElementById('settings-panel');
+            const left = document.getElementById('left-col');
+            const btn = document.getElementById('panel-toggle-btn');
+            const willHide = panel.style.display !== 'none';
+            panel.style.display = willHide ? 'none' : '';
+            left.classList.toggle('lg:col-span-7', !willHide);
+            left.classList.toggle('lg:col-span-12', willHide);
+            left.classList.toggle('expanded', willHide);
+            btn.textContent = willHide ? '📝 설정 보기' : '🙈 설정 숨기기';
+        }
+
         function clearDarts() {
             playSound('click');
             stuckDarts = [];
@@ -327,12 +357,7 @@
             initAudio();
             playSound('whoosh');
 
-            const rect = wrapper.getBoundingClientRect();
-            const W = rect.width;
-            const H = rect.height;
-            const cx = W / 2;
-            const cy = H / 2;
-            const radius = Math.min(W, H) * 0.44;
+            const { W, H, cx, cy, radius } = getBoardMetrics();
 
             // 목표 지점 계산 (직접 클릭한 좌표 또는 현재 흔들리는 조준선 위치)
             let tx = customTargetX !== null ? customTargetX : (cx + aimX * radius * 0.88);
@@ -352,7 +377,11 @@
         }
 
         // 마우스/터치 조준 및 클릭 투척 이벤트
+        let lastTouchTime = 0;
+        const isTouchRecent = () => Date.now() - lastTouchTime < 1000;
+
         canvas.addEventListener('mousemove', (e) => {
+            if (isTouchRecent()) return; // 터치 후 발생하는 합성 mousemove 무시
             const rect = canvas.getBoundingClientRect();
             const cx = rect.width / 2;
             const cy = rect.height / 2;
@@ -367,18 +396,20 @@
         });
 
         canvas.addEventListener('click', (e) => {
+            if (isTouchRecent()) return; // 터치는 touchstart에서 이미 처리 (이중 발사 방지)
             const rect = canvas.getBoundingClientRect();
             throwDart(e.clientX - rect.left, e.clientY - rect.top);
         });
 
         canvas.addEventListener('touchstart', (e) => {
+            lastTouchTime = Date.now();
+            e.preventDefault(); // 합성 mouse/click 이벤트 차단
+            isManualAiming = false;
             if (e.touches.length === 1) {
                 const rect = canvas.getBoundingClientRect();
-                const tx = e.touches[0].clientX - rect.left;
-                const ty = e.touches[0].clientY - rect.top;
-                throwDart(tx, ty);
+                throwDart(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
             }
-        }, { passive: true });
+        }, { passive: false });
 
         // 명중 판정 계산
         function evaluateDartHit(hitX, hitY, cx, cy, radius) {
@@ -409,17 +440,18 @@
             if (stuckDarts.length > 15) stuckDarts.shift();
 
             // 파편 파티클 생성
-            spawnHitParticles(hitX, hitY, distRatio <= 0.16 ? '#facc15' : '#ffffff');
+            const isBullseye = distRatio <= BULLSEYE_RATIO;
+            spawnHitParticles(hitX, hitY, isBullseye ? '#facc15' : '#ffffff');
+            if (isBullseye) spawnHitParticles(hitX, hitY, '#f43f5e');
             boardShake = 8;
 
-            // 2) 한가운데 황금 불스아이(Bullseye) 명중 판정!
-            // 3) 일반 부채꼴 칸 명중 판정 (가중치 비율 반영)
-            playSound('thud');
+            // 2) 황금 불스아이 대박 / 3) 일반 칸 (가중치 비율 반영)
+            playSound(isBullseye ? 'bullseye' : 'thud');
             const totalW = getTotalWeight();
             const targetWeightPos = (localAngle / (Math.PI * 2)) * totalW;
-            
+
             let accWeight = 0;
-            let wonItem = dartItems[0].text;
+            let wonItem = dartItems[dartItems.length - 1].text;
             for (let i = 0; i < dartItems.length; i++) {
                 accWeight += dartItems[i].weight;
                 if (targetWeightPos <= accWeight) {
@@ -428,8 +460,13 @@
                 }
             }
 
-            recordHistory(wonItem);
-            showResultModal('🎯', '다트가 명중한 곳은 바로...', wonItem);
+            if (isBullseye) {
+                recordHistory('⭐ ' + wonItem);
+                showResultModal('🌟', '🎉 대박! 황금 불스아이 명중! 🎉', `${wonItem} ${BULLSEYE_BONUS}`);
+            } else {
+                recordHistory(wonItem);
+                showResultModal('🎯', '다트가 명중한 곳은 바로...', wonItem);
+            }
         }
 
         function spawnHitParticles(x, y, color) {
@@ -450,7 +487,7 @@
         // 5. 캔버스 렌더링 및 메인 애니메이션 루프
         // ==========================================
         function resizeCanvas() {
-            const rect = wrapper.getBoundingClientRect();
+            const rect = canvas.getBoundingClientRect();
             const dpr = window.devicePixelRatio || 1;
             canvas.width = rect.width * dpr;
             canvas.height = rect.height * dpr;
@@ -458,16 +495,21 @@
         }
 
         window.addEventListener('resize', resizeCanvas);
+        if (window.ResizeObserver) new ResizeObserver(resizeCanvas).observe(canvas);
 
-        function renderLoop() {
-            const rect = wrapper.getBoundingClientRect();
-            const W = rect.width;
-            const H = rect.height;
+        let lastFrameTime = 0;
+        function renderLoop(ts) {
+            const nowT = ts || performance.now();
+            if (!lastFrameTime) lastFrameTime = nowT;
+            const dt = Math.min(0.05, (nowT - lastFrameTime) / 1000);
+            lastFrameTime = nowT;
+            const f = dt * 60; // 60fps 기준 프레임 배율 (주사율 무관)
+            const { W, H } = getBoardMetrics();
 
             // 과녁 진동 효과 적용
             const shakeX = boardShake > 0 ? (Math.random() - 0.5) * boardShake : 0;
             const shakeY = boardShake > 0 ? (Math.random() - 0.5) * boardShake : 0;
-            if (boardShake > 0) boardShake *= 0.82;
+            if (boardShake > 0) boardShake *= Math.pow(0.82, f);
             if (boardShake < 0.2) boardShake = 0;
 
             const cx = W / 2 + shakeX;
@@ -477,9 +519,9 @@
             ctx.clearRect(0, 0, W, H);
 
             // 1. 과녁 회전 및 자동 조준선(8자 궤적) 업데이트
-            boardAngle += boardSpeed;
+            boardAngle += boardSpeed * f;
             if (!isManualAiming) {
-                aimTime += 0.035;
+                aimTime += 0.035 * f;
                 aimX = Math.sin(aimTime) * 0.72;
                 aimY = Math.sin(aimTime * 1.7) * 0.65;
             }
@@ -490,7 +532,7 @@
             ctx.arc(cx, cy, radius + 14, 0, Math.PI * 2);
             ctx.fillStyle = '#0f172a';
             ctx.fill();
-            ctx.lineWidth = 6;
+            ctx.restore();
             // 3. 회전하는 다트 과녁 조각(부채꼴) 그리기 (각 항목의 weight 비율에 따라 각도 배분)
             const count = dartItems.length;
             const totalW = getTotalWeight();
@@ -572,7 +614,7 @@
 
             // 7. 날아가는 다트 애니메이션 처리
             if (flyingDart) {
-                flyingDart.progress += 0.09; // 다트 비행 속도
+                flyingDart.progress += 0.09 * f; // 다트 비행 속도
                 const p = Math.min(1, flyingDart.progress);
 
                 // 포물선 궤적 및 원근감(점점 작아짐) 계산
@@ -594,9 +636,9 @@
             // 8. 파티클 업데이트 및 그리기
             for (let i = particles.length - 1; i >= 0; i--) {
                 const pt = particles[i];
-                pt.x += pt.vx;
-                pt.y += pt.vy;
-                pt.life -= 0.03;
+                pt.x += pt.vx * f;
+                pt.y += pt.vy * f;
+                pt.life -= 0.03 * f;
                 if (pt.life <= 0) {
                     particles.splice(i, 1);
                 } else {
@@ -748,7 +790,7 @@
         window.onload = function() {
             renderItemsList();
             resizeCanvas();
-            renderLoop();
+            requestAnimationFrame(renderLoop);
         };
     </script>
 </body>
