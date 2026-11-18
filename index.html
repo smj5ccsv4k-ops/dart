@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>슈퍼 다트 던지기 복불복!</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 효과음을 위한 Tone.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- 아이들이 좋아할 만한 둥근 한글 폰트 (Jua) -->
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Jua', sans-serif;
+            background: radial-gradient(circle at top, #1e1b4b 0%, #090d16 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+            user-select: none;
+            color: #f8fafc;
+        }
+        .game-btn {
+            transition: all 0.15s ease;
+            box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45);
+        }
+        .game-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+        @keyframes pop-in {
+            0% { transform: scale(0.75); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .modal-pop {
+            animation: pop-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="p-3 sm:p-6 flex flex-col items-center justify-center">
+
+    <!-- 메인 컨테이너 -->
+    <div class="w-full max-w-5xl bg-slate-900/90 backdrop-blur-md rounded-3xl shadow-2xl p-4 sm:p-8 border-4 border-rose-500/60">
+        
+        <!-- 상단 타이틀 -->
+        <header class="text-center mb-6">
+            <div class="inline-block bg-rose-500/20 text-rose-300 border border-rose-400/40 px-4 py-1 rounded-full text-sm sm:text-base mb-2">
+                🎯 기버데이 명사수 대결! 🎯
+            </div>
+            <h1 class="text-3xl sm:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-amber-300 to-cyan-300 tracking-wide">
+                🏹 슈퍼 다트 던지기 복불복! 🎁
+            </h1>
+            <p class="text-slate-300 mt-1 text-sm sm:text-lg">
+                조준선을 움직여 타이밍에 맞춰 다트를 던지세요! 한가운데 <span class="text-yellow-300 font-bold">황금 불스아이</span>에 꽂히면 대박 찬스!
+            </p>
+        </header>
+
+        <!-- 메인 2단 레이아웃 -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            
+            <!-- 왼쪽: 다트 과녁 캔버스 및 투척 버튼 (7칸 차지) -->
+            <div class="lg:col-span-7 flex flex-col items-center">
+                <!-- 과녁 회전 속도 조절 바 -->
+                <div class="w-full max-w-[440px] flex items-center justify-between bg-slate-800/80 px-4 py-2 rounded-2xl border border-slate-700 mb-3">
+                    <span class="text-sm sm:text-base text-cyan-300">🌀 과녁 회전 속도:</span>
+                    <div class="flex gap-1.5">
+                        <button onclick="setBoardSpeed(0)" id="spd-0" class="px-3 py-1 rounded-lg text-xs sm:text-sm bg-slate-700 text-slate-300">정지</button>
+                        <button onclick="setBoardSpeed(0.015)" id="spd-1" class="px-3 py-1 rounded-lg text-xs sm:text-sm bg-emerald-500 text-slate-950 font-bold">보통</button>
+                        <button onclick="setBoardSpeed(0.038)" id="spd-2" class="px-3 py-1 rounded-lg text-xs sm:text-sm bg-slate-700 text-slate-300">빠름 🔥</button>
+                    </div>
+                </div>
+
+                <!-- 다트 과녁 캔버스 래퍼 -->
+                <div class="relative w-full max-w-[440px] aspect-square flex items-center justify-center bg-slate-950/70 rounded-3xl border-2 border-slate-700/80 p-2 shadow-inner" id="board-wrapper">
+                    <canvas id="dartCanvas" class="cursor-crosshair"></canvas>
+                </div>
+
+                <!-- 하단 다트 던지기 버튼 & 꽂힌 다트 뽑기 버튼 -->
+                <div class="w-full max-w-[440px] mt-4 flex gap-3">
+                    <button onclick="throwDart()" id="throw-btn"
+                        class="game-btn flex-1 bg-gradient-to-r from-rose-500 via-orange-500 to-amber-400 hover:from-rose-400 hover:to-amber-300 text-slate-950 font-bold text-2xl py-3.5 rounded-2xl tracking-wider">
+                        🎯 다트 던지기!
+                    </button>
+                    <button onclick="clearDarts()" title="과녁에 꽂힌 다트 모두 뽑기"
+                        class="game-btn bg-slate-700 hover:bg-slate-600 text-white px-4 py-3.5 rounded-2xl text-base sm:text-lg shrink-0">
+                        🧹 다트 뽑기
+                    </button>
+                </div>
+                <p class="text-center text-xs sm:text-sm text-slate-400 mt-2">
+                    💡 과녁 위를 터치하거나 클릭해도 그 위치로 바로 다트가 날아갑니다!
+                </p>
+            </div>
+
+            <!-- 오른쪽: 과녁 칸(상품 & 벌칙) 설정 패널 (5칸 차지) -->
+            <div class="lg:col-span-5 bg-slate-800/80 p-4 sm:p-5 rounded-3xl border-2 border-rose-500/40 flex flex-col h-full">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h2 class="text-xl text-amber-300">📝 과녁 상품 & 벌칙 설정</h2>
+                </div>
+
+                <!-- 새 항목 추가 입력창 -->
+                <div class="flex gap-2 mb-3">
+                    <input type="text" id="new-item-input" maxlength="13" placeholder="새 상품이나 벌칙 입력 (최대 13자)"
+                        onkeydown="if(event.key === 'Enter') addNewItem()"
+                        class="w-full bg-slate-950 text-white px-3 py-2 rounded-xl border border-slate-600 focus:outline-none focus:border-rose-400 text-base">
+                    <button onclick="addNewItem()" class="game-btn bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-4 py-2 rounded-xl shrink-0">
+                        ➕ 추가
+                    </button>
+                </div>
+
+                <!-- 항목 리스트 -->
+                <div id="items-list-container" class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                    <!-- JS로 항목 렌더링 -->
+                </div>
+
+                <!-- 명중 기록 -->
+                <div id="history-box" class="mt-4 pt-3 border-t border-slate-700 hidden">
+                    <div class="text-sm text-cyan-300 mb-1.5">🎯 최근 명중 기록:</div>
+                    <div id="history-list" class="flex flex-wrap gap-1.5 text-xs"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 명중 결과 발표 팝업 모달 -->
+    <div id="result-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center border-4 border-rose-400 shadow-2xl modal-pop">
+            <div id="modal-emoji" class="text-6xl mb-3 animate-bounce">🎯</div>
+            <p id="modal-subtitle" class="text-slate-300 text-lg mb-1">다트가 명중한 곳은 바로...</p>
+            <div id="modal-result-text" class="text-3xl sm:text-4xl font-bold text-amber-300 bg-slate-800 py-5 px-4 rounded-2xl border-2 border-amber-400/60 my-4 break-words shadow-inner">
+                당첨 내용!
+            </div>
+            <button onclick="closeModal()" class="game-btn w-full bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 text-slate-950 font-bold text-xl py-3.5 rounded-xl">
+                멋진 샷! 👍
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 초기 데이터 및 게임 상태 변수
+        // ==========================================
+        const SLICE_COLORS = [
+            '#e11d48', // 로즈 레드
+            '#2563eb', // 로열 블루
+            '#059669', // 에메랄드
+            '#d97706', // 앰버 골드
+            '#7c3aed', // 바이올렛
+            '#db2777', // 핑크
+            '#0891b2', // 시안
+            '#ea580c'  // 오렌지
+        ];
+
+        let dartItems = [
+            { text: '레고장난감', weight: 1 },
+            { text: 'ABC초콜릿', weight: 2 },
+            { text: '고래밥', weight: 1 },
+            { text: '새콤달콤', weight: 2 },
+            { text: '다시한번', weight: 1 },
+            { text: '아이셔', weight: 2 }
+        ];
+
+        let historyRecords = [];
+
+        // 과녁 및 조준선 상태
+        let boardAngle = 0;           // 과녁 현재 회전 각도
+        let boardSpeed = 0.015;       // 과녁 회전 속도
+        let aimTime = 0;              // 조준선 자동 흔들림 타이머
+        let aimX = 0;                 // 현재 조준점 상대 X (-1 ~ 1)
+        let aimY = 0;                 // 현재 조준점 상대 Y (-1 ~ 1)
+        let isManualAiming = false;   // 마우스/터치 직접 조준 여부
+
+        // 날아가는 다트 & 꽂힌 다트 관리
+        let flyingDart = null;        // { startX, startY, targetX, targetY, progress }
+        let stuckDarts = [];          // { distRatio, angleOffset, color } (과녁과 함께 회전)
+        let particles = [];           // 명중 파편 파티클
+        let boardShake = 0;           // 다트가 꽂힐 때 과녁 진동 효과
+
+        const canvas = document.getElementById('dartCanvas');
+        const ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('board-wrapper');
+
+        // ==========================================
+        // 2. 사운드 효과 (Tone.js)
+        // ==========================================
+        let synth = null;
+        function initAudio() {
+            try {
+                if (!synth && typeof Tone !== 'undefined') {
+                    synth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: { type: "triangle" },
+                        envelope: { attack: 0.005, decay: 0.08, sustain: 0, release: 0.1 }
+                    }).toDestination();
+                    synth.volume.value = -8;
+                }
+            } catch (e) {}
+        }
+
+        function playSound(type) {
+            try {
+                initAudio();
+                if (!synth) return;
+                if (Tone.context && Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+
+                if (type === 'click') {
+                    synth.triggerAttackRelease("E5", "32n");
+                } else if (type === 'whoosh') {
+                    synth.triggerAttackRelease("A4", "16n");
+                } else if (type === 'thud') {
+                    synth.triggerAttackRelease("C3", "16n");
+                } else if (type === 'bullseye') {
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("C5", "16n", now);
+                    synth.triggerAttackRelease("E5", "16n", now + 0.08);
+                    synth.triggerAttackRelease("G5", "16n", now + 0.16);
+                    synth.triggerAttackRelease("C6", "4n", now + 0.24);
+                }
+            } catch (e) {}
+        }
+
+        // ==========================================
+        // 3. 항목 관리 (추가, 수정, 삭제, 크기 조절, 프리셋)
+        // ==========================================
+        function getTotalWeight() {
+            return dartItems.reduce((sum, item) => sum + item.weight, 0);
+        }
+
+        function renderItemsList() {
+            const container = document.getElementById('items-list-container');
+            container.innerHTML = '';
+            const totalW = getTotalWeight();
+
+            dartItems.forEach((item, idx) => {
+                const color = SLICE_COLORS[idx % SLICE_COLORS.length];
+                const percent = Math.round((item.weight / totalW) * 100);
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-1.5 bg-slate-900/90 p-2 rounded-xl border border-slate-700';
+                row.innerHTML = `
+                    <span class="w-4 h-4 rounded-full shrink-0 border border-white/50" style="background-color: ${color};"></span>
+                    <input type="text" value="${item.text}" maxlength="13"
+                        onchange="updateItemText(${idx}, this.value)"
+                        class="w-full min-w-0 bg-transparent text-white text-sm sm:text-base px-1 focus:outline-none focus:border-b border-rose-400">
+                    
+                    <!-- 칸 크기(배율) 조절 컨트롤 -->
+                    <div class="flex items-center bg-slate-800 rounded-lg border border-slate-600 px-1 py-0.5 shrink-0" title="칸 크기 조절">
+                        <button type="button" onclick="changeItemWeight(${idx}, -1)" class="text-rose-400 hover:bg-slate-700 active:scale-90 rounded px-2 py-1 font-bold text-sm cursor-pointer">➖</button>
+                        <span class="text-xs text-amber-300 font-bold w-11 text-center">${item.weight}배<span class="text-[10px] text-slate-400 block leading-none">${percent}%</span></span>
+                        <button type="button" onclick="changeItemWeight(${idx}, 1)" class="text-emerald-400 hover:bg-slate-700 active:scale-90 rounded px-2 py-1 font-bold text-sm cursor-pointer">➕</button>
+                    </div>
+
+                    <button type="button" onclick="removeItem(${idx})" title="삭제"
+                        class="text-slate-400 hover:text-rose-400 px-2 py-1 text-sm font-bold shrink-0 cursor-pointer">
+                        ✕
+                    </button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function changeItemWeight(index, delta) {
+            if (!dartItems[index]) return;
+            const nextWeight = dartItems[index].weight + delta;
+            if (nextWeight >= 1 && nextWeight <= 8) {
+                playSound('click');
+                dartItems[index].weight = nextWeight;
+                renderItemsList();
+            }
+        }
+
+        function updateItemText(index, newText) {
+            const trimmed = newText.trim();
+            if (trimmed) {
+                dartItems[index].text = trimmed;
+            } else {
+                renderItemsList();
+            }
+        }
+
+        function addNewItem() {
+            const input = document.getElementById('new-item-input');
+            const val = input.value.trim();
+            if (!val) return;
+            if (dartItems.length >= 10) {
+                showResultModal('⚠️', '알림', '과녁 칸은 최대 10개까지 만들 수 있어요!');
+                return;
+            }
+            playSound('click');
+            dartItems.push({ text: val, weight: 1 });
+            input.value = '';
+            renderItemsList();
+        }
+
+        function removeItem(index) {
+            if (dartItems.length <= 2) {
+                showResultModal('⚠️', '알림', '과녁에는 최소 2개 이상의 칸이 필요해요!');
+                return;
+            }
+            playSound('click');
+            dartItems.splice(index, 1);
+            renderItemsList();
+        }
+
+        function setBoardSpeed(spd) {
+            playSound('click');
+            boardSpeed = spd;
+            document.getElementById('spd-0').className = spd === 0 ? 'px-3 py-1 rounded-lg text-xs sm:text-sm bg-emerald-500 text-slate-950 font-bold' : 'px-3 py-1 rounded-lg text-xs sm:text-sm bg-slate-700 text-slate-300';
+            document.getElementById('spd-1').className = spd === 0.015 ? 'px-3 py-1 rounded-lg text-xs sm:text-sm bg-emerald-500 text-slate-950 font-bold' : 'px-3 py-1 rounded-lg text-xs sm:text-sm bg-slate-700 text-slate-300';
+            document.getElementById('spd-2').className = spd === 0.038 ? 'px-3 py-1 rounded-lg text-xs sm:text-sm bg-rose-500 text-white font-bold' : 'px-3 py-1 rounded-lg text-xs sm:text-sm bg-slate-700 text-slate-300';
+        }
+
+        function clearDarts() {
+            playSound('click');
+            stuckDarts = [];
+        }
+
+        // ==========================================
+        // 4. 다트 조준 및 투척 로직
+        // ==========================================
+        function throwDart(customTargetX = null, customTargetY = null) {
+            if (flyingDart) return; // 이미 날아가는 중이면 중복 발사 방지
+            initAudio();
+            playSound('whoosh');
+
+            const rect = wrapper.getBoundingClientRect();
+            const W = rect.width;
+            const H = rect.height;
+            const cx = W / 2;
+            const cy = H / 2;
+            const radius = Math.min(W, H) * 0.44;
+
+            // 목표 지점 계산 (직접 클릭한 좌표 또는 현재 흔들리는 조준선 위치)
+            let tx = customTargetX !== null ? customTargetX : (cx + aimX * radius * 0.88);
+            let ty = customTargetY !== null ? customTargetY : (cy + aimY * radius * 0.88);
+
+            // 실제 다트 던지기처럼 아주 미세한 손떨림(오차) 추가
+            tx += (Math.random() - 0.5) * 14;
+            ty += (Math.random() - 0.5) * 14;
+
+            flyingDart = {
+                startX: cx,
+                startY: H + 30,
+                targetX: tx,
+                targetY: ty,
+                progress: 0
+            };
+        }
+
+        // 마우스/터치 조준 및 클릭 투척 이벤트
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const cx = rect.width / 2;
+            const cy = rect.height / 2;
+            const radius = Math.min(rect.width, rect.height) * 0.44;
+            isManualAiming = true;
+            aimX = Math.max(-1, Math.min(1, (e.clientX - rect.left - cx) / (radius * 0.88)));
+            aimY = Math.max(-1, Math.min(1, (e.clientY - rect.top - cy) / (radius * 0.88)));
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isManualAiming = false;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            throwDart(e.clientX - rect.left, e.clientY - rect.top);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                const rect = canvas.getBoundingClientRect();
+                const tx = e.touches[0].clientX - rect.left;
+                const ty = e.touches[0].clientY - rect.top;
+                throwDart(tx, ty);
+            }
+        }, { passive: true });
+
+        // 명중 판정 계산
+        function evaluateDartHit(hitX, hitY, cx, cy, radius) {
+            const dx = hitX - cx;
+            const dy = hitY - cy;
+            const dist = Math.hypot(dx, dy);
+            const distRatio = dist / radius;
+
+            // 1) 과녁 바깥(빗나감) 판정
+            if (distRatio > 1.02) {
+                playSound('thud');
+                showResultModal('😅', '앗! 과녁을 빗나갔어요!', '꽝! 다음 기회에 다시 도전! 🎯');
+                return;
+            }
+
+            // 과녁 회전 각도를 기준으로 꽂힌 상대 각도 계산
+            const worldAngle = Math.atan2(dy, dx);
+            let localAngle = (worldAngle - boardAngle) % (Math.PI * 2);
+            if (localAngle < 0) localAngle += Math.PI * 2;
+
+            // 꽂힌 다트 영구 등록 (과녁과 함께 회전)
+            const dartColors = ['#facc15', '#38bdf8', '#f43f5e', '#4ade80'];
+            stuckDarts.push({
+                distRatio: distRatio,
+                angleOffset: localAngle,
+                color: dartColors[stuckDarts.length % dartColors.length]
+            });
+            if (stuckDarts.length > 15) stuckDarts.shift();
+
+            // 파편 파티클 생성
+            spawnHitParticles(hitX, hitY, distRatio <= 0.16 ? '#facc15' : '#ffffff');
+            boardShake = 8;
+
+            // 2) 한가운데 황금 불스아이(Bullseye) 명중 판정!
+            // 3) 일반 부채꼴 칸 명중 판정 (가중치 비율 반영)
+            playSound('thud');
+            const totalW = getTotalWeight();
+            const targetWeightPos = (localAngle / (Math.PI * 2)) * totalW;
+            
+            let accWeight = 0;
+            let wonItem = dartItems[0].text;
+            for (let i = 0; i < dartItems.length; i++) {
+                accWeight += dartItems[i].weight;
+                if (targetWeightPos <= accWeight) {
+                    wonItem = dartItems[i].text;
+                    break;
+                }
+            }
+
+            recordHistory(wonItem);
+            showResultModal('🎯', '다트가 명중한 곳은 바로...', wonItem);
+        }
+
+        function spawnHitParticles(x, y, color) {
+            for (let i = 0; i < 22; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 2 + Math.random() * 6;
+                particles.push({
+                    x, y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    color,
+                    life: 1.0
+                });
+            }
+        }
+
+        // ==========================================
+        // 5. 캔버스 렌더링 및 메인 애니메이션 루프
+        // ==========================================
+        function resizeCanvas() {
+            const rect = wrapper.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function renderLoop() {
+            const rect = wrapper.getBoundingClientRect();
+            const W = rect.width;
+            const H = rect.height;
+
+            // 과녁 진동 효과 적용
+            const shakeX = boardShake > 0 ? (Math.random() - 0.5) * boardShake : 0;
+            const shakeY = boardShake > 0 ? (Math.random() - 0.5) * boardShake : 0;
+            if (boardShake > 0) boardShake *= 0.82;
+            if (boardShake < 0.2) boardShake = 0;
+
+            const cx = W / 2 + shakeX;
+            const cy = H / 2 + shakeY;
+            const radius = Math.min(W, H) * 0.44;
+
+            ctx.clearRect(0, 0, W, H);
+
+            // 1. 과녁 회전 및 자동 조준선(8자 궤적) 업데이트
+            boardAngle += boardSpeed;
+            if (!isManualAiming) {
+                aimTime += 0.035;
+                aimX = Math.sin(aimTime) * 0.72;
+                aimY = Math.sin(aimTime * 1.7) * 0.65;
+            }
+
+            // 2. 과녁 외곽 나무/메탈 프레임 그리기
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius + 14, 0, Math.PI * 2);
+            ctx.fillStyle = '#0f172a';
+            ctx.fill();
+            ctx.lineWidth = 6;
+            // 3. 회전하는 다트 과녁 조각(부채꼴) 그리기 (각 항목의 weight 비율에 따라 각도 배분)
+            const count = dartItems.length;
+            const totalW = getTotalWeight();
+            let currentStartAngle = boardAngle;
+
+            for (let i = 0; i < count; i++) {
+                const sliceAngle = (dartItems[i].weight / totalW) * (Math.PI * 2);
+                const startA = currentStartAngle;
+                const endA = startA + sliceAngle;
+                const midA = startA + sliceAngle / 2;
+                currentStartAngle = endA;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.arc(cx, cy, radius, startA, endA);
+                ctx.closePath();
+
+                ctx.fillStyle = SLICE_COLORS[i % SLICE_COLORS.length];
+                ctx.fill();
+                ctx.lineWidth = 2.5;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+                ctx.stroke();
+
+                // 다트판 특유의 더블/트리플 링 장식선
+                ctx.beginPath();
+                // 텍스트 라벨 그리기 (칸이 좁을수록 글자 크기도 자동 조절, 시인성 극대화)
+                ctx.translate(cx, cy);
+                ctx.rotate(midA);
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+
+                const ratio = dartItems[i].weight / totalW;
+                const fontSize = ratio < 0.08 ? 15 : (ratio < 0.14 ? 19 : 23);
+                ctx.font = `bold ${fontSize}px "Jua", sans-serif`;
+
+                let label = dartItems[i].text;
+                if (label.length > 11) label = label.substring(0, 10) + '..';
+
+                // 가독성을 위한 진한 외곽선 및 그림자 적용
+                ctx.lineWidth = 4.5;
+                ctx.strokeStyle = 'rgba(15, 23, 42, 0.9)';
+                ctx.lineJoin = 'round';
+                ctx.strokeText(label, radius - 14, 0);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(label, radius - 14, 0);
+                ctx.restore();
+            }
+
+            // 4. 한가운데 황금 불스아이(Bullseye) 그리기
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.16, 0, Math.PI * 2);
+            ctx.fillStyle = '#facc15';
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.07, 0, Math.PI * 2);
+            ctx.fillStyle = '#dc2626';
+            ctx.fill();
+            ctx.restore();
+
+            // 5. 과녁에 이미 꽂혀있는 다트들 그리기 (과녁과 같이 회전)
+            for (let d of stuckDarts) {
+                const worldA = boardAngle + d.angleOffset;
+                const dx = cx + Math.cos(worldA) * (d.distRatio * radius);
+                const dy = cy + Math.sin(worldA) * (d.distRatio * radius);
+                drawStuckDart(dx, dy, d.color);
+            }
+
+            // 6. 움직이는 조준선(Crosshair) 그리기
+            const targetScreenX = cx + aimX * radius * 0.88;
+            const targetScreenY = cy + aimY * radius * 0.88;
+            drawCrosshair(targetScreenX, targetScreenY);
+
+            // 7. 날아가는 다트 애니메이션 처리
+            if (flyingDart) {
+                flyingDart.progress += 0.09; // 다트 비행 속도
+                const p = Math.min(1, flyingDart.progress);
+
+                // 포물선 궤적 및 원근감(점점 작아짐) 계산
+                const curX = flyingDart.startX + (flyingDart.targetX - flyingDart.startX) * p;
+                const arcOffset = Math.sin(p * Math.PI) * 55;
+                const curY = flyingDart.startY + (flyingDart.targetY - flyingDart.startY) * p - arcOffset;
+                const scale = 2.4 - p * 1.4; // 처음엔 크게 보이다가 과녁에 닿을 때 1.0 크기로 축소
+
+                drawFlyingDart(curX, curY, scale);
+
+                if (p >= 1) {
+                    const hitX = flyingDart.targetX;
+                    const hitY = flyingDart.targetY;
+                    flyingDart = null;
+                    evaluateDartHit(hitX, hitY, cx, cy, radius);
+                }
+            }
+
+            // 8. 파티클 업데이트 및 그리기
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.life -= 0.03;
+                if (pt.life <= 0) {
+                    particles.splice(i, 1);
+                } else {
+                    ctx.save();
+                    ctx.globalAlpha = pt.life;
+                    ctx.fillStyle = pt.color;
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        // 조준선 그리기 헬퍼
+        function drawCrosshair(x, y) {
+            ctx.save();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = '#0284c7';
+            ctx.shadowBlur = 8;
+
+            // 외곽 원
+            ctx.beginPath();
+            ctx.arc(x, y, 18, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 십자선
+            ctx.beginPath();
+            ctx.moveTo(x - 25, y); ctx.lineTo(x + 25, y);
+            ctx.moveTo(x, y - 25); ctx.lineTo(x, y + 25);
+            ctx.stroke();
+
+            // 중앙 조준점
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath();
+            ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 날아가는 다트 그리기 헬퍼
+        function drawFlyingDart(x, y, scale) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+
+            // 다트 날개 (꼬리 깃털)
+            ctx.fillStyle = '#f43f5e';
+            ctx.beginPath();
+            ctx.moveTo(0, 10);
+            ctx.lineTo(-14, 28);
+            ctx.lineTo(0, 22);
+            ctx.lineTo(14, 28);
+            ctx.closePath();
+            ctx.fill();
+
+            // 다트 몸통
+            ctx.fillStyle = '#facc15';
+            ctx.fillRect(-3, -6, 6, 24);
+
+            // 다트 금속 바늘 촉
+            ctx.fillStyle = '#e2e8f0';
+            ctx.beginPath();
+            ctx.moveTo(-2, -6);
+            ctx.lineTo(0, -18);
+            ctx.lineTo(2, -6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 과녁에 꽂힌 다트 그리기 헬퍼 (입체적인 꼬리 깃털 표현)
+        function drawStuckDart(x, y, color) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // 그림자
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.beginPath();
+            ctx.arc(4, 4, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 꽂힌 지점 금속 핀
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(0, 0, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 비스듬히 꽂힌 다트 꼬리 깃털 (X자 모양)
+            ctx.translate(6, -6);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-7, -7); ctx.lineTo(7, 7);
+            ctx.moveTo(7, -7); ctx.lineTo(-7, 7);
+            ctx.stroke();
+
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath();
+            ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // ==========================================
+        // 6. 결과 모달 및 기록 업데이트
+        // ==========================================
+        function showResultModal(emoji, subtitle, resultText) {
+            document.getElementById('modal-emoji').innerText = emoji;
+            document.getElementById('modal-subtitle').innerText = subtitle;
+            document.getElementById('modal-result-text').innerText = resultText;
+
+            const modal = document.getElementById('result-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeModal() {
+            playSound('click');
+            const modal = document.getElementById('result-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function recordHistory(text) {
+            historyRecords.unshift(text);
+            if (historyRecords.length > 6) historyRecords.pop();
+
+            const box = document.getElementById('history-box');
+            const list = document.getElementById('history-list');
+            box.classList.remove('hidden');
+            list.innerHTML = '';
+
+            historyRecords.forEach((rec, idx) => {
+                const badge = document.createElement('span');
+                badge.className = idx === 0
+                    ? 'bg-rose-500/20 border border-rose-400 text-rose-200 px-2.5 py-1 rounded-lg font-bold'
+                    : 'bg-slate-900 border border-slate-700 text-slate-300 px-2.5 py-1 rounded-lg';
+                badge.innerText = `${idx === 0 ? '🎯 ' : ''}${rec}`;
+                list.appendChild(badge);
+            });
+        }
+
+        // 초기 실행
+        window.onload = function() {
+            renderItemsList();
+            resizeCanvas();
+            renderLoop();
+        };
+    </script>
+</body>
+</html>
